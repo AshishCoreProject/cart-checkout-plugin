@@ -1,6 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useContext, useState } from "react";
 import { CartContext } from "../context/CartProvider";
-import { useContext } from "react";
 import type { CheckoutResponse } from "../api/types";
 
 export type UseCheckoutReturn = {
@@ -10,6 +9,10 @@ export type UseCheckoutReturn = {
   result: CheckoutResponse | null;
 };
 
+/**
+ * Checkout (API mode only). Wraps CartProvider.checkout with isPending/error/result state.
+ * Implementation: context/CartProvider.tsx (checkout) → api/cartApi.ts (checkout).
+ */
 export const useCheckout = (): UseCheckoutReturn => {
   const context = useContext(CartContext);
 

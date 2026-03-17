@@ -1,3 +1,10 @@
+/**
+ * Cart state and actions for the cart-checkout plugin.
+ *
+ * Two modes:
+ * - Local-only: no apiBaseUrl/storeId. Cart is in React state and persisted to localStorage per tenant.
+ * - API mode: apiBaseUrl + storeId set. Cart is loaded and updated via backend; see src/api/cartApi.ts and ARCHITECTURE.md.
+ */
 import {
   createContext,
   useCallback,
@@ -8,6 +15,7 @@ import {
 } from "react";
 import * as cartApi from "../api/cartApi";
 import type { CheckoutResponse } from "../api/types";
+import { useCartApiInit } from "../hooks/useCartApiInit";
 
 export type CartItem = {
   id: string | number;
@@ -100,6 +108,10 @@ export const CartProvider = ({
     };
   }, [tenantId, effectiveStoreId, guestCartId, getHeaders]);
 
+  /**
+   * Refetches cart from API. Used after add/update/remove/clear/merge.
+   * No-op if not in API mode or missing guest id / X-User-Id.
+   */
   const fetchCart = useCallback(async () => {
     if (!apiBaseUrl || !effectiveStoreId) return;
     const opts = buildApiOpts();
@@ -116,94 +128,20 @@ export const CartProvider = ({
     }
   }, [apiBaseUrl, effectiveStoreId, buildApiOpts]);
 
-  // API mode: ensure guest session then fetch cart
-  useEffect(() => {
-    if (typeof window === "undefined" || !apiMode || !apiBaseUrl || !effectiveStoreId) return;
+  // API mode: on mount, ensure guest session (or use X-User-Id) then load cart. See useCartApiInit.ts and ARCHITECTURE.md.
+  useCartApiInit({
+    apiMode,
+    apiBaseUrl,
+    tenantId,
+    storeId: effectiveStoreId,
+    getHeaders,
+    setItems,
+    setIsSyncing,
+    setLastError,
+    setGuestCartId,
+  });
 
-    let cancelled = false;
-
-    async function init() {
-      const baseUrl = apiBaseUrl as string;
-      const headers = getHeaders?.() ?? {};
-      const opts: cartApi.CartApiOptions = {
-        tenantId,
-        storeId: effectiveStoreId,
-        headers,
-        guestCartId: undefined,
-      };
-
-      if (headers["X-User-Id"]) {
-        opts.guestCartId = undefined;
-        setIsSyncing(true);
-        setLastError(null);
-        try {
-          const cart = await cartApi.getCartView(baseUrl, opts);
-          if (!cancelled) setItems(cart.items as CartItem[]);
-        } catch (err) {
-          if (!cancelled) setLastError(err instanceof Error ? err : new Error(String(err)));
-        } finally {
-          if (!cancelled) setIsSyncing(false);
-        }
-        return;
-      }
-
-      const key = getGuestCartStorageKey(tenantId, effectiveStoreId);
-      let guestId: string | null = null;
-      try {
-        const stored = window.localStorage.getItem(key);
-        if (stored) guestId = stored;
-      } catch {
-        // ignore
-      }
-
-      if (!guestId) {
-        setIsSyncing(true);
-        setLastError(null);
-        try {
-          guestId = await cartApi.createGuestSession(baseUrl, {
-            tenantId,
-            storeId: effectiveStoreId,
-            headers,
-          });
-          if (!cancelled) {
-            setGuestCartId(guestId);
-            try {
-              window.localStorage.setItem(key, guestId!);
-            } catch {
-              // ignore
-            }
-          }
-        } catch (err) {
-          if (!cancelled) setLastError(err instanceof Error ? err : new Error(String(err)));
-          if (!cancelled) setIsSyncing(false);
-          return;
-        } finally {
-          if (!cancelled) setIsSyncing(false);
-        }
-      } else if (!cancelled) {
-        setGuestCartId(guestId);
-      }
-
-      if (!cancelled && guestId) {
-        opts.guestCartId = guestId;
-        setIsSyncing(true);
-        setLastError(null);
-        try {
-          const cart = await cartApi.getCartView(baseUrl, opts);
-          if (!cancelled) setItems(cart.items as CartItem[]);
-        } catch (err) {
-          if (!cancelled) setLastError(err instanceof Error ? err : new Error(String(err)));
-        } finally {
-          if (!cancelled) setIsSyncing(false);
-        }
-      }
-    }
-
-    init();
-    return () => { cancelled = true; };
-  }, [apiMode, apiBaseUrl, tenantId, effectiveStoreId]);
-
-  // Local-only mode: hydrate from localStorage
+  // Local-only mode: on mount, hydrate cart from localStorage (key: {storageKeyPrefix}:{tenantId})
   useEffect(() => {
     if (typeof window === "undefined" || apiMode) return;
 
@@ -231,13 +169,13 @@ export const CartProvider = ({
     }
   }, [storageKey, apiMode]);
 
-  // Local-only mode: persist after hydration
+  // Local-only mode: whenever items change (after first hydration), persist to localStorage
   useEffect(() => {
     if (typeof window === "undefined" || !hasHydrated.current || apiMode) return;
     try {
       window.localStorage.setItem(storageKey, JSON.stringify(items));
     } catch {
-      // ignore
+      /* ignore */
     }
   }, [items, storageKey, apiMode]);
 
@@ -257,6 +195,7 @@ export const CartProvider = ({
     };
   }, [items]);
 
+  // Add or merge item by id. API mode: POST /cart/add then refetch. Local: update state (persist effect saves).
   const addItem: CartContextValue["addItem"] = useCallback(
     (item, quantity = 1) => {
       if (item == null || item.id === undefined) return;
@@ -296,6 +235,7 @@ export const CartProvider = ({
     [apiMode, apiBaseUrl, effectiveStoreId, tenantId, buildApiOpts, fetchCart],
   );
 
+  // Remove line item by id. API mode: DELETE /cart/item/{id} then refetch. Local: filter state.
   const removeItem: CartContextValue["removeItem"] = useCallback(
     (id) => {
       if (apiMode && apiBaseUrl && effectiveStoreId) {
@@ -314,6 +254,7 @@ export const CartProvider = ({
     [apiMode, apiBaseUrl, effectiveStoreId, buildApiOpts, fetchCart],
   );
 
+  // Set quantity for item; removes if quantity <= 0. API mode: PUT /cart/item/{id} then refetch. Local: update state.
   const updateQuantity: CartContextValue["updateQuantity"] = useCallback(
     (id, quantity) => {
       if (quantity <= 0) {
@@ -340,6 +281,7 @@ export const CartProvider = ({
     [apiMode, apiBaseUrl, effectiveStoreId, buildApiOpts, fetchCart, removeItem],
   );
 
+  // Remove all items. API mode: DELETE /cart/clear then set items to []. Local: set items to [].
   const clearCart: CartContextValue["clearCart"] = useCallback(() => {
     if (apiMode && apiBaseUrl && effectiveStoreId) {
       setIsSyncing(true);
@@ -355,6 +297,7 @@ export const CartProvider = ({
     setItems([]);
   }, [apiMode, apiBaseUrl, effectiveStoreId, buildApiOpts]);
 
+  // API mode only. POST /checkout/. Used by useCheckout().startCheckout().
   const checkout: CartContextValue["checkout"] = useCallback(
     async (body) => {
       if (!apiMode || !apiBaseUrl || !effectiveStoreId) {
@@ -365,6 +308,7 @@ export const CartProvider = ({
     [apiMode, apiBaseUrl, effectiveStoreId, buildApiOpts],
   );
 
+  // API mode only. Call after login: POST /cart/merge-guest-cart, clear stored guest id, refetch cart.
   const mergeGuestCart = useCallback(async () => {
     if (!apiMode || !apiBaseUrl || !effectiveStoreId || !guestCartId) return;
     const headers = getHeaders?.() ?? {};

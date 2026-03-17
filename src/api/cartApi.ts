@@ -1,3 +1,18 @@
+/**
+ * Cart HTTP client. Used only when CartProvider is in API mode (apiBaseUrl + storeId).
+ *
+ * Endpoint map:
+ *   POST /cart/guest/session     → createGuestSession
+ *   GET  /cart/view              → getCartView
+ *   POST /cart/add               → addToCart
+ *   PUT  /cart/item/{id}         → updateCartItem
+ *   DELETE /cart/item/{id}       → removeCartItem
+ *   DELETE /cart/clear           → clearCartApi
+ *   POST /cart/merge-guest-cart  → mergeGuestCart
+ *   POST /checkout/              → checkout
+ *
+ * All requests use buildHeaders(opts) for Content-Type and optional X-Guest-Cart-Id / X-User-Id.
+ */
 import type {
   GuestSessionResponse,
   ApiCartViewResponse,

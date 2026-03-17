@@ -4,6 +4,8 @@ A small React SDK for cart state and persistence in multi-tenant storefronts. Su
 
 **Requirements:** React 18+
 
+For **flow, requirements checklist, and where to debug**, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+
 ---
 
 ## Install

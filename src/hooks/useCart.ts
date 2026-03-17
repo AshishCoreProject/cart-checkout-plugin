@@ -1,6 +1,10 @@
 import { useContext } from "react";
 import { CartContext } from "../context/CartProvider";
 
+/**
+ * Cart state and actions. Must be used inside CartProvider.
+ * Implementation: context/CartProvider.tsx; API calls: api/cartApi.ts.
+ */
 export const useCart = () => {
   const context = useContext(CartContext);
 
