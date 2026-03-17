@@ -1,6 +1,6 @@
 # @ecommerce-store/cart-checkout-plugin
 
-A small React SDK for cart state and persistence in multi-tenant storefronts. Supports per-tenant localStorage, typed cart items, and a simple summary (subtotal, total, item count).
+A small React SDK for cart state and persistence in multi-tenant storefronts. Supports **local-only mode** (localStorage per tenant) or **API mode** (sync with your backend: guest session, add/view/update/remove/clear, checkout, merge guest cart on login).
 
 **Requirements:** React 18+
 
@@ -84,8 +84,11 @@ function CartPage() {
 | Prop                | Type     | Default   | Description                                      |
 |---------------------|----------|-----------|--------------------------------------------------|
 | `tenantId`          | `string` | required  | Tenant/store id. Cart is stored per tenant.       |
-| `storageKeyPrefix`   | `string` | `"cart"`  | Prefix for localStorage key: `{prefix}:{tenantId}` |
-| `children`          | `ReactNode` | required | Your app or subtree.                             |
+| `storageKeyPrefix`  | `string` | `"cart"`  | Prefix for localStorage key (local-only mode).   |
+| `children`         | `ReactNode` | required | Your app or subtree.                             |
+| `apiBaseUrl`       | `string` | —         | When set, enables **API mode** (see below).      |
+| `storeId`          | `string` | —         | Required when `apiBaseUrl` is set.                |
+| `getHeaders`       | `() => Record<string, string>` | — | Optional. Return headers for each request (e.g. `{ "X-User-Id": userId }` for logged-in users). |
 
 ### `useCart()`
 
@@ -101,24 +104,70 @@ Returns:
 | `removeItem`    | `(id) => void`          | Remove line by `id`. |
 | `updateQuantity`| `(id, quantity) => void`| Set quantity; remove if ≤ 0. |
 | `clearCart`     | `() => void`             | Remove all items. |
+| `isSyncing`     | `boolean`               | **API mode only.** True while loading or mutating. |
+| `lastError`     | `Error \| null`          | **API mode only.** Last API error, clear on next success. |
+| `mergeGuestCart`| `() => Promise<void>`   | **API mode only.** Call after login to merge guest cart into user cart. |
+
+### `useCheckout()`
+
+**API mode only.** Returns:
+
+| Property        | Type                    | Description |
+|-----------------|-------------------------|-------------|
+| `startCheckout` | `(body?) => Promise<CheckoutResponse \| null>` | Call your `POST /checkout/`; returns redirect URL or order id. |
+| `isPending`     | `boolean`               | True while checkout request is in flight. |
+| `error`         | `Error \| null`          | Checkout request error. |
+| `result`        | `CheckoutResponse \| null` | Last successful response (`checkout_url`, `order_id`, etc.). |
 
 ### Types
 
 - **`CartItem`** — `id` (string or number), optional `name`, `price`, `quantity` (defaults to 1 when adding), and any extra fields.
-- **`CartSummary`** — `{ subtotal, total, itemCount }` (total is same as subtotal in this version).
-- **`CartContextValue`** — Full context type if you need it (e.g. for custom hooks or wrappers).
+- **`CartSummary`** — `{ subtotal, total, itemCount }`.
+- **`CheckoutResponse`** — Typed response from checkout (e.g. `checkout_url`, `order_id`). Import when using `useCheckout`.
+- **`CartContextValue`** — Full context type if you need it.
 
 ```ts
-import type { CartItem, CartSummary } from "@ecommerce-store/cart-checkout-plugin";
+import type { CartItem, CartSummary, CheckoutResponse } from "@ecommerce-store/cart-checkout-plugin";
+```
+
+---
+
+## API mode (backend sync)
+
+When you pass `apiBaseUrl` and `storeId`, the plugin switches to **API mode**:
+
+- **Guest session:** The plugin calls `POST /cart/guest/session` to get a guest cart id, stores it in localStorage (key `cart_guest_id:{tenantId}:{storeId}`), and sends it as the `X-Guest-Cart-Id` header on all cart requests.
+- **Logged-in users:** Provide `getHeaders={() => ({ "X-User-Id": currentUserId })}`. The plugin sends `X-User-Id` instead of (or with) the guest id. After login, call **`mergeGuestCart()`** so the backend merges the guest cart into the user cart; the plugin then stops using the stored guest id and refetches the cart.
+- **Endpoints used:** `GET /cart/view`, `POST /cart/add`, `PUT /cart/item/{item_id}`, `DELETE /cart/item/{item_id}`, `DELETE /cart/clear`, `POST /cart/merge-guest-cart`, `POST /checkout/`. Request bodies and query params use `tenant_id` and `store_id` as required by your API.
+
+Example:
+
+```jsx
+<CartProvider
+  tenantId={tenantId}
+  storeId={storeId}
+  apiBaseUrl="https://api.example.com"
+  getHeaders={() => (user ? { "X-User-Id": user.id } : {})}
+>
+  <App />
+</CartProvider>
+
+// After user logs in:
+const { mergeGuestCart } = useCart();
+await mergeGuestCart();
+
+// Checkout:
+const { startCheckout, isPending, result } = useCheckout();
+const res = await startCheckout();
+if (res?.checkout_url) window.location.href = res.checkout_url;
 ```
 
 ---
 
 ## Multi-tenant behavior
 
-- Each `tenantId` gets its own cart in localStorage under the key `{storageKeyPrefix}:{tenantId}` (e.g. `cart:my-store-id`).
-- Switching `tenantId` (e.g. different store) loads and persists a separate cart for that tenant.
-- Persistence runs only in the browser and only after the initial load from storage, so the cart is not overwritten with an empty array on first paint.
+- **Local-only mode:** Each `tenantId` gets its own cart in localStorage under the key `{storageKeyPrefix}:{tenantId}`. Persistence runs only after hydration so the cart is not overwritten on first paint.
+- **API mode:** Cart is stored on the server. Guest cart id is stored per tenant+store and reused across refreshes. Use `mergeGuestCart()` after login to merge guest cart into the user cart.
 
 ---
 

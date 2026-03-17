@@ -16,6 +16,9 @@ export const useCart = () => {
     removeItem,
     updateQuantity,
     clearCart,
+    isSyncing,
+    lastError,
+    mergeGuestCart,
   } = context;
 
   const isEmpty = items.length === 0;
@@ -29,5 +32,8 @@ export const useCart = () => {
     removeItem,
     updateQuantity,
     clearCart,
+    isSyncing,
+    lastError,
+    mergeGuestCart,
   };
 };
