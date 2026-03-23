@@ -1,6 +1,6 @@
 {
   "name": "@storefront/cart-checkout-plugin",
-  "version": "2.3.0",
+  "version": "3.0.0",
   "description": "Reusable cart and checkout SDK for multi-tenant React storefront applications",
   "type": "module",
   "main": "dist/cart-checkout-plugin.umd.cjs",
