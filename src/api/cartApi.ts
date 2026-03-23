@@ -9,9 +9,9 @@
  *   DELETE /cart/item/{id}       → removeCartItem
  *   DELETE /cart/clear           → clearCartApi
  *   POST /cart/merge-guest-cart  → mergeGuestCart
- *   POST /checkout/              → checkout
+ *   POST /checkout/?tenant_id&store_id → checkout (empty body; tenant/store in query when set)
  *
- * All requests use buildHeaders(opts) for Content-Type and optional X-Guest-Cart-Id / X-User-Id.
+ * Most cart requests use buildHeaders(opts). Checkout uses buildCheckoutHeaders (empty body = no JSON Content-Type).
  */
 import type {
   GuestSessionResponse,
@@ -23,8 +23,8 @@ import type {
 } from "./types";
 
 export type CartApiOptions = {
-  tenantId: string;
-  storeId: string;
+  tenantId?: string;
+  storeId?: string;
   guestCartId?: string | null;
   headers?: Record<string, string>;
 };
@@ -33,6 +33,25 @@ function buildHeaders(opts: CartApiOptions): Record<string, string> {
   const out: Record<string, string> = { "Content-Type": "application/json", ...opts.headers };
   if (opts.guestCartId) out["X-Guest-Cart-Id"] = opts.guestCartId;
   return out;
+}
+
+/** Checkout: match cURL (Accept + auth headers; optional JSON body only when caller passes a non-empty object). */
+function buildCheckoutHeaders(
+  opts: CartApiOptions,
+  includeJsonContentType: boolean,
+): Record<string, string> {
+  const out: Record<string, string> = {
+    Accept: "application/json",
+    ...opts.headers,
+  };
+  if (includeJsonContentType) out["Content-Type"] = "application/json";
+  if (opts.guestCartId) out["X-Guest-Cart-Id"] = opts.guestCartId;
+  return out;
+}
+
+function checkoutBodyHasPayload(body?: Record<string, unknown>): boolean {
+  if (body == null) return false;
+  return Object.keys(body).length > 0;
 }
 
 function getJson<T>(res: Response): Promise<T> {
@@ -64,17 +83,20 @@ export function normalizeCartView(api: ApiCartViewResponse): NormalizedCart {
 
 export async function createGuestSession(
   apiBaseUrl: string,
-  opts: { tenantId: string; storeId: string; headers?: Record<string, string> }
+  opts: { headers?: Record<string, string> }
 ): Promise<string> {
   const url = `${apiBaseUrl.replace(/\/$/, "")}/cart/guest/session`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...opts.headers },
-    body: JSON.stringify({ tenant_id: opts.tenantId, store_id: opts.storeId }),
+    // Your API supports empty body for guest session.
+    body: "",
   });
   const data = await getJson<GuestSessionResponse>(res);
-  const id = data.guest_cart_id ?? data.id ?? data.cart_id;
-  if (!id || typeof id !== "string") throw new Error("Guest session response missing guest_cart_id");
+  const id = data.guest_id ?? data.guest_cart_id ?? data.id ?? data.cart_id;
+  if (!id || typeof id !== "string") {
+    throw new Error("Guest session response missing guest_id");
+  }
   return id;
 }
 
@@ -82,7 +104,11 @@ export async function getCartView(
   apiBaseUrl: string,
   opts: CartApiOptions
 ): Promise<NormalizedCart> {
-  const url = `${apiBaseUrl.replace(/\/$/, "")}/cart/view?tenant_id=${encodeURIComponent(opts.tenantId)}&store_id=${encodeURIComponent(opts.storeId)}`;
+  const base = apiBaseUrl.replace(/\/$/, "");
+  const qs = new URLSearchParams();
+  if (opts.tenantId) qs.set("tenant_id", opts.tenantId);
+  if (opts.storeId) qs.set("store_id", opts.storeId);
+  const url = `${base}/cart/view${qs.toString() ? `?${qs.toString()}` : ""}`;
   const res = await fetch(url, { method: "GET", headers: buildHeaders(opts) });
   const data = await getJson<ApiCartViewResponse>(res);
   return normalizeCartView(data);
@@ -131,7 +157,11 @@ export async function clearCartApi(
   apiBaseUrl: string,
   opts: CartApiOptions
 ): Promise<void> {
-  const url = `${apiBaseUrl.replace(/\/$/, "")}/cart/clear`;
+  const base = apiBaseUrl.replace(/\/$/, "");
+  const qs = new URLSearchParams();
+  if (opts.tenantId) qs.set("tenant_id", opts.tenantId);
+  if (opts.storeId) qs.set("store_id", opts.storeId);
+  const url = `${base}/cart/clear${qs.toString() ? `?${qs.toString()}` : ""}`;
   const res = await fetch(url, { method: "DELETE", headers: buildHeaders(opts) });
   if (!res.ok) await res.text().then((t) => { throw new Error(t || `HTTP ${res.status}`); });
 }
@@ -144,7 +174,10 @@ export async function mergeGuestCart(
   const res = await fetch(url, {
     method: "POST",
     headers: buildHeaders(opts),
-    body: JSON.stringify({ tenant_id: opts.tenantId, store_id: opts.storeId }),
+    body: JSON.stringify({
+      ...(opts.tenantId ? { tenant_id: opts.tenantId } : {}),
+      ...(opts.storeId ? { store_id: opts.storeId } : {}),
+    }),
   });
   if (!res.ok) await res.text().then((t) => { throw new Error(t || `HTTP ${res.status}`); });
 }
@@ -154,11 +187,19 @@ export async function checkout(
   opts: CartApiOptions,
   body?: Record<string, unknown>
 ): Promise<CheckoutResponse> {
-  const url = `${apiBaseUrl.replace(/\/$/, "")}/checkout/`;
+  const base = apiBaseUrl.replace(/\/$/, "");
+  const qs = new URLSearchParams();
+  if (opts.tenantId) qs.set("tenant_id", opts.tenantId);
+  if (opts.storeId) qs.set("store_id", opts.storeId);
+  const path = `${base}/checkout/`;
+  const url = qs.toString() ? `${path}?${qs.toString()}` : path;
+
+  const withJsonBody = checkoutBodyHasPayload(body);
+  const headers = buildCheckoutHeaders(opts, withJsonBody);
   const res = await fetch(url, {
     method: "POST",
-    headers: buildHeaders(opts),
-    body: JSON.stringify(body ?? { tenant_id: opts.tenantId, store_id: opts.storeId }),
+    headers,
+    body: withJsonBody ? JSON.stringify(body) : "",
   });
   return getJson<CheckoutResponse>(res);
 }

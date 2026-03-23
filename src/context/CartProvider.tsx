@@ -3,7 +3,7 @@
  *
  * Two modes:
  * - Local-only: no apiBaseUrl/storeId. Cart is in React state and persisted to localStorage per tenant.
- * - API mode: apiBaseUrl + storeId set. Cart is loaded and updated via backend; see src/api/cartApi.ts and ARCHITECTURE.md.
+ * - API mode: apiBaseUrl set. Cart is loaded and updated via backend; see src/api/cartApi.ts and ARCHITECTURE.md.
  */
 import {
   createContext,
@@ -50,12 +50,12 @@ export type CartContextValue = {
 };
 
 type CartProviderProps = {
-  tenantId: string;
+  tenantId?: string;
   storageKeyPrefix?: string;
   children: React.ReactNode;
-  /** When set, cart is synced with backend (API mode). Requires storeId. */
+  /** When set, cart is synced with backend (API mode). */
   apiBaseUrl?: string;
-  /** Required when apiBaseUrl is set. */
+  /** Optional: used by some backends for scoping; omit for global guest cart behavior. */
   storeId?: string;
   /** Optional: return headers for auth (e.g. X-User-Id). When X-User-Id is present, guest id is not sent after merge. */
   getHeaders?: () => Record<string, string>;
@@ -65,14 +65,15 @@ export const CartContext = createContext<CartContextValue | undefined>(
   undefined,
 );
 
-const getStorageKey = (tenantId: string, prefix: string) =>
-  `${prefix}:${tenantId}`;
+const getStorageKey = (tenantId: string, prefix: string) => `${prefix}:${tenantId}`;
 
-const getGuestCartStorageKey = (tenantId: string, storeId: string) =>
-  `cart_guest_id:${tenantId}:${storeId}`;
+const getGuestCartStorageKey = (
+  tenantId: string | undefined,
+  storeId: string | undefined,
+) => `cart_guest_id:${tenantId || "default"}:${storeId || "default"}`;
 
-function isApiMode(apiBaseUrl: string | undefined, storeId: string | undefined): apiBaseUrl is string {
-  return typeof apiBaseUrl === "string" && apiBaseUrl.length > 0 && typeof storeId === "string" && storeId.length > 0;
+function isApiMode(apiBaseUrl: string | undefined): apiBaseUrl is string {
+  return typeof apiBaseUrl === "string" && apiBaseUrl.length > 0;
 }
 
 export const CartProvider = ({
@@ -83,7 +84,11 @@ export const CartProvider = ({
   storeId,
   getHeaders,
 }: CartProviderProps) => {
-  const storageKey = getStorageKey(tenantId, storageKeyPrefix);
+  // For local-only mode we still need a stable key.
+  const effectiveTenantId = tenantId ?? "default";
+  const effectiveStoreId = storeId || undefined;
+
+  const storageKey = getStorageKey(effectiveTenantId, storageKeyPrefix);
   const hasHydrated = useRef(false);
 
   const [items, setItems] = useState<CartItem[]>([]);
@@ -93,15 +98,13 @@ export const CartProvider = ({
   // API mode: guest cart id (when no X-User-Id)
   const [guestCartId, setGuestCartId] = useState<string | null>(null);
 
-  const apiMode = isApiMode(apiBaseUrl, storeId);
-
-  const effectiveStoreId = storeId ?? "";
+  const apiMode = isApiMode(apiBaseUrl);
 
   const buildApiOpts = useCallback((): cartApi.CartApiOptions => {
     const headers = getHeaders?.() ?? {};
     const userId = headers["X-User-Id"];
     return {
-      tenantId,
+      tenantId: tenantId || undefined,
       storeId: effectiveStoreId,
       guestCartId: userId ? undefined : guestCartId,
       headers,
@@ -113,7 +116,7 @@ export const CartProvider = ({
    * No-op if not in API mode or missing guest id / X-User-Id.
    */
   const fetchCart = useCallback(async () => {
-    if (!apiBaseUrl || !effectiveStoreId) return;
+    if (!apiBaseUrl) return;
     const opts = buildApiOpts();
     if (!opts.guestCartId && !opts.headers?.["X-User-Id"]) return;
     setIsSyncing(true);
@@ -132,7 +135,7 @@ export const CartProvider = ({
   useCartApiInit({
     apiMode,
     apiBaseUrl,
-    tenantId,
+    tenantId: tenantId || undefined,
     storeId: effectiveStoreId,
     getHeaders,
     setItems,
@@ -200,17 +203,19 @@ export const CartProvider = ({
     (item, quantity = 1) => {
       if (item == null || item.id === undefined) return;
 
-      if (apiMode && apiBaseUrl && effectiveStoreId) {
+      if (apiMode && apiBaseUrl) {
         setIsSyncing(true);
         setLastError(null);
         const opts = buildApiOpts();
+        const body: Record<string, unknown> = {
+          product_id: String(item.id),
+          quantity,
+        };
+        if (tenantId) body.tenant_id = tenantId;
+        if (effectiveStoreId) body.store_id = effectiveStoreId;
         cartApi
-          .addToCart(apiBaseUrl, opts, {
-            tenant_id: tenantId,
-            store_id: effectiveStoreId,
-            product_id: String(item.id),
-            quantity,
-          })
+          // types allow optional tenant/store; backend decides what it requires
+          .addToCart(apiBaseUrl, opts, body as any)
           .then(() => fetchCart())
           .catch((err) => setLastError(err instanceof Error ? err : new Error(String(err))))
           .finally(() => setIsSyncing(false));
@@ -238,7 +243,7 @@ export const CartProvider = ({
   // Remove line item by id. API mode: DELETE /cart/item/{id} then refetch. Local: filter state.
   const removeItem: CartContextValue["removeItem"] = useCallback(
     (id) => {
-      if (apiMode && apiBaseUrl && effectiveStoreId) {
+      if (apiMode && apiBaseUrl) {
         setIsSyncing(true);
         setLastError(null);
         const opts = buildApiOpts();
@@ -261,7 +266,7 @@ export const CartProvider = ({
         removeItem(id);
         return;
       }
-      if (apiMode && apiBaseUrl && effectiveStoreId) {
+      if (apiMode && apiBaseUrl) {
         setIsSyncing(true);
         setLastError(null);
         const opts = buildApiOpts();
@@ -283,7 +288,7 @@ export const CartProvider = ({
 
   // Remove all items. API mode: DELETE /cart/clear then set items to []. Local: set items to [].
   const clearCart: CartContextValue["clearCart"] = useCallback(() => {
-    if (apiMode && apiBaseUrl && effectiveStoreId) {
+    if (apiMode && apiBaseUrl) {
       setIsSyncing(true);
       setLastError(null);
       const opts = buildApiOpts();
@@ -300,8 +305,8 @@ export const CartProvider = ({
   // API mode only. POST /checkout/. Used by useCheckout().startCheckout().
   const checkout: CartContextValue["checkout"] = useCallback(
     async (body) => {
-      if (!apiMode || !apiBaseUrl || !effectiveStoreId) {
-        throw new Error("Checkout requires API mode (apiBaseUrl + storeId)");
+      if (!apiMode || !apiBaseUrl) {
+        throw new Error("Checkout requires API mode (apiBaseUrl)");
       }
       return cartApi.checkout(apiBaseUrl, buildApiOpts(), body);
     },
@@ -310,14 +315,14 @@ export const CartProvider = ({
 
   // API mode only. Call after login: POST /cart/merge-guest-cart, clear stored guest id, refetch cart.
   const mergeGuestCart = useCallback(async () => {
-    if (!apiMode || !apiBaseUrl || !effectiveStoreId || !guestCartId) return;
+    if (!apiMode || !apiBaseUrl || !guestCartId) return;
     const headers = getHeaders?.() ?? {};
     if (!headers["X-User-Id"]) return;
     setIsSyncing(true);
     setLastError(null);
     try {
       await cartApi.mergeGuestCart(apiBaseUrl, {
-        tenantId,
+        tenantId: tenantId || undefined,
         storeId: effectiveStoreId,
         guestCartId,
         headers,
@@ -341,7 +346,7 @@ export const CartProvider = ({
     () => ({
       items,
       summary,
-      tenantId,
+      tenantId: effectiveTenantId,
       addItem,
       removeItem,
       updateQuantity,
@@ -354,7 +359,7 @@ export const CartProvider = ({
     [
       items,
       summary,
-      tenantId,
+      effectiveTenantId,
       addItem,
       removeItem,
       updateQuantity,

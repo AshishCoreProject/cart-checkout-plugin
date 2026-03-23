@@ -116,7 +116,7 @@ Returns:
 
 | Property        | Type                    | Description |
 |-----------------|-------------------------|-------------|
-| `startCheckout` | `(body?) => Promise<CheckoutResponse \| null>` | Call your `POST /checkout/`; returns redirect URL or order id. |
+| `startCheckout` | `(body?) => Promise<CheckoutResponse \| null>` | `POST /checkout/?tenant_id&store_id` (query when set); empty body unless you pass a JSON `body`. |
 | `isPending`     | `boolean`               | True while checkout request is in flight. |
 | `error`         | `Error \| null`          | Checkout request error. |
 | `result`        | `CheckoutResponse \| null` | Last successful response (`checkout_url`, `order_id`, etc.). |
@@ -140,7 +140,7 @@ When you pass `apiBaseUrl` and `storeId`, the plugin switches to **API mode**:
 
 - **Guest session:** The plugin calls `POST /cart/guest/session` to get a guest cart id, stores it in localStorage (key `cart_guest_id:{tenantId}:{storeId}`), and sends it as the `X-Guest-Cart-Id` header on all cart requests.
 - **Logged-in users:** Provide `getHeaders={() => ({ "X-User-Id": currentUserId })}`. The plugin sends `X-User-Id` instead of (or with) the guest id. After login, call **`mergeGuestCart()`** so the backend merges the guest cart into the user cart; the plugin then stops using the stored guest id and refetches the cart.
-- **Endpoints used:** `GET /cart/view`, `POST /cart/add`, `PUT /cart/item/{item_id}`, `DELETE /cart/item/{item_id}`, `DELETE /cart/clear`, `POST /cart/merge-guest-cart`, `POST /checkout/`. Request bodies and query params use `tenant_id` and `store_id` as required by your API.
+- **Endpoints used:** `GET /cart/view`, `POST /cart/add`, `PUT /cart/item/{item_id}`, `DELETE /cart/item/{item_id}`, `DELETE /cart/clear?tenant_id&store_id`, `POST /cart/merge-guest-cart`, `POST /checkout/?tenant_id&store_id` (checkout body empty by default). Request bodies and query params use `tenant_id` and `store_id` as required by your API.
 
 Example:
 

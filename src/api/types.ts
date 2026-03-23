@@ -4,6 +4,9 @@
  */
 
 export type GuestSessionResponse = {
+  guest_id?: string;
+  cookie_name?: string;
+  message?: string;
   guest_cart_id?: string;
   id?: string;
   cart_id?: string;
@@ -27,8 +30,8 @@ export type ApiCartViewResponse = {
 };
 
 export type AddToCartBody = {
-  tenant_id: string;
-  store_id: string;
+  tenant_id?: string;
+  store_id?: string;
   product_id: string;
   quantity: number;
 };
@@ -37,9 +40,38 @@ export type UpdateCartItemBody = {
   quantity: number;
 };
 
+/** Line item in checkout success response (e.g. devbaascart API) */
+export type CheckoutOrderLineItem = {
+  cart_item_id?: string;
+  product_id?: string;
+  quantity?: number;
+  unit_price?: number;
+  subtotal?: number;
+  discount?: number;
+  final_amount?: number;
+  [key: string]: unknown;
+};
+
+/** Response from POST /checkout/?tenant_id&store_id (empty body, X-User-Id / X-Guest-Cart-Id) */
 export type CheckoutResponse = {
-  checkout_url?: string;
+  message?: string;
   order_id?: string;
+  cart_id?: string;
+  user_id?: string | null;
+  guest_id?: string | null;
+  promo?: {
+    promo_id?: string | null;
+    coupon_code?: string | null;
+    [key: string]: unknown;
+  };
+  summary?: {
+    subtotal?: number;
+    discount?: number;
+    total_paid?: number;
+    [key: string]: unknown;
+  };
+  items?: CheckoutOrderLineItem[];
+  checkout_url?: string;
   redirect_url?: string;
   [key: string]: unknown;
 };

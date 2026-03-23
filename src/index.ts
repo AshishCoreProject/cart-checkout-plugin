@@ -6,4 +6,7 @@ export type {
   CartSummary,
   CartContextValue,
 } from "./context/CartProvider";
-export type { CheckoutResponse } from "./api/types";
+export type {
+  CheckoutResponse,
+  CheckoutOrderLineItem,
+} from "./api/types";

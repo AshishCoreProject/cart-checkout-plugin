@@ -73,8 +73,8 @@ Implemented in `src/api/cartApi.ts`:
 | `POST /cart/add` | `addToCart` | `addItem()` in API mode |
 | `PUT /cart/item/{id}` | `updateCartItem` | `updateQuantity()` in API mode |
 | `DELETE /cart/item/{id}` | `removeCartItem` | `removeItem()` in API mode |
-| `DELETE /cart/clear` | `clearCartApi` | `clearCart()` in API mode |
+| `DELETE /cart/clear?tenant_id&store_id` | `clearCartApi` | `clearCart()` in API mode |
 | `POST /cart/merge-guest-cart` | `mergeGuestCart` | `mergeGuestCart()` after login |
-| `POST /checkout/` | `checkout` | `useCheckout().startCheckout()` |
+| `POST /checkout/?tenant_id&store_id` | `checkout` | `useCheckout().startCheckout()` (empty body; tenant/store in query when set) |
 
 All requests that need a cart identity use `buildHeaders(opts)`, which adds `X-Guest-Cart-Id` when `opts.guestCartId` is set and merges in `opts.headers` (e.g. `X-User-Id`).

@@ -4,15 +4,18 @@ import type { CartItem } from "../context/CartProvider";
 
 const GUEST_CART_STORAGE_KEY_PREFIX = "cart_guest_id";
 
-function getGuestCartStorageKey(tenantId: string, storeId: string): string {
-  return `${GUEST_CART_STORAGE_KEY_PREFIX}:${tenantId}:${storeId}`;
+function getGuestCartStorageKey(
+  tenantId: string | undefined,
+  storeId: string | undefined,
+): string {
+  return `${GUEST_CART_STORAGE_KEY_PREFIX}:${tenantId || "default"}:${storeId || "default"}`;
 }
 
 type UseCartApiInitArgs = {
   apiMode: boolean;
   apiBaseUrl: string | undefined;
-  tenantId: string;
-  storeId: string;
+  tenantId: string | undefined;
+  storeId: string | undefined;
   getHeaders?: () => Record<string, string>;
   setItems: React.Dispatch<React.SetStateAction<CartItem[]>>;
   setIsSyncing: React.Dispatch<React.SetStateAction<boolean>>;
@@ -40,7 +43,7 @@ export function useCartApiInit({
   setGuestCartId,
 }: UseCartApiInitArgs): void {
   useEffect(() => {
-    if (typeof window === "undefined" || !apiMode || !apiBaseUrl || !storeId) return;
+    if (typeof window === "undefined" || !apiMode || !apiBaseUrl) return;
 
     let cancelled = false;
     const baseUrl = apiBaseUrl;
@@ -80,8 +83,6 @@ export function useCartApiInit({
         setLastError(null);
         try {
           guestId = await cartApi.createGuestSession(baseUrl, {
-            tenantId,
-            storeId,
             headers,
           });
           if (!cancelled) {
