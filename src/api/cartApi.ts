@@ -15,6 +15,7 @@
  */
 import type {
   GuestSessionResponse,
+  ApiCartItem,
   ApiCartViewResponse,
   AddToCartBody,
   UpdateCartItemBody,
@@ -65,10 +66,30 @@ function getJson<T>(res: Response): Promise<T> {
 
 /** Normalize API cart response to plugin-compatible shape */
 export function normalizeCartView(api: ApiCartViewResponse): NormalizedCart {
+  const pickName = (row: ApiCartItem): string | undefined => {
+    const fromName = typeof row.name === "string" ? row.name.trim() : "";
+    if (fromName) return fromName;
+
+    const fromTitle = typeof row.title === "string" ? row.title.trim() : "";
+    if (fromTitle) return fromTitle;
+
+    const fromProductName =
+      typeof row.product_name === "string" ? row.product_name.trim() : "";
+    if (fromProductName) return fromProductName;
+
+    const fromProductTitle =
+      typeof row.product_title === "string" ? row.product_title.trim() : "";
+    if (fromProductTitle) return fromProductTitle;
+
+    const fallbackId = row.product_id ?? row.item_id ?? row.id;
+    const fallback = fallbackId == null ? "" : String(fallbackId).trim();
+    return fallback || undefined;
+  };
+
   const items = (api.items || []).map((row) => ({
     ...row,
     id: row.item_id ?? row.id,
-    name: row.name,
+    name: pickName(row),
     price: row.price,
     quantity: typeof row.quantity === "number" && row.quantity > 0 ? row.quantity : 1,
   }));

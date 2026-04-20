@@ -52,7 +52,7 @@ All of the above are implemented. Optimizations (e.g. request deduping, retries)
    One effect reads from `localStorage` and sets `items`. Another effect (after hydration) writes `items` back to `localStorage` when `items` change.
 
 3. **addItem / removeItem / updateQuantity / clearCart**  
-   In API mode: call the corresponding function in `src/api/cartApi.ts`, then call `fetchCart()` to refresh `items`. In local-only: update React state only; the persist effect saves to localStorage.
+   In API mode: `addItem` requires `item.variant_id` and sends `product_id`, `variant_id`, `quantity` (plus optional `tenant_id` / `store_id`) to `POST /cart/add`; other actions call the corresponding function in `src/api/cartApi.ts`. All mutations then call `fetchCart()` to refresh `items`. In local-only: update React state only; the persist effect saves to localStorage.
 
 4. **mergeGuestCart()**  
    Called after login. Calls `POST /cart/merge-guest-cart` with `X-Guest-Cart-Id` and `X-User-Id`, clears the stored guest id, then refetches the cart.

@@ -17,6 +17,9 @@ export type ApiCartItem = {
   item_id?: string;
   product_id?: string;
   name?: string;
+  title?: string;
+  product_name?: string;
+  product_title?: string;
   price?: number;
   quantity: number;
   [key: string]: unknown;
@@ -33,6 +36,7 @@ export type AddToCartBody = {
   tenant_id?: string;
   store_id?: string;
   product_id: string;
+  variant_id: string;
   quantity: number;
 };
 

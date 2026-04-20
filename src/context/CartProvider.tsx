@@ -207,8 +207,16 @@ export const CartProvider = ({
         setIsSyncing(true);
         setLastError(null);
         const opts = buildApiOpts();
+        const variantId =
+          typeof item.variant_id === "string" ? item.variant_id.trim() : "";
+        if (!variantId) {
+          setLastError(new Error("variant_id is required for addItem in API mode"));
+          setIsSyncing(false);
+          return;
+        }
         const body: Record<string, unknown> = {
           product_id: String(item.id),
+          variant_id: variantId,
           quantity,
         };
         if (tenantId) body.tenant_id = tenantId;

@@ -45,6 +45,7 @@ function ProductCard({ product }) {
       onClick={() =>
         addItem({
           id: product.id,
+          variant_id: product.variant_id,
           name: product.name,
           price: product.price,
           quantity: 1,
@@ -140,6 +141,7 @@ When you pass `apiBaseUrl` and `storeId`, the plugin switches to **API mode**:
 
 - **Guest session:** The plugin calls `POST /cart/guest/session` to get a guest cart id, stores it in localStorage (key `cart_guest_id:{tenantId}:{storeId}`), and sends it as the `X-Guest-Cart-Id` header on all cart requests.
 - **Logged-in users:** Provide `getHeaders={() => ({ "X-User-Id": currentUserId })}`. The plugin sends `X-User-Id` instead of (or with) the guest id. After login, call **`mergeGuestCart()`** so the backend merges the guest cart into the user cart; the plugin then stops using the stored guest id and refetches the cart.
+- **Add-to-cart payload:** In API mode, `addItem` must receive `variant_id`; the plugin sends `product_id`, `variant_id`, `quantity`, and optional `tenant_id` / `store_id` to `POST /cart/add`.
 - **Endpoints used:** `GET /cart/view`, `POST /cart/add`, `PUT /cart/item/{item_id}`, `DELETE /cart/item/{item_id}`, `DELETE /cart/clear?tenant_id&store_id`, `POST /cart/merge-guest-cart`, `POST /checkout/?tenant_id&store_id` (checkout body empty by default). Request bodies and query params use `tenant_id` and `store_id` as required by your API.
 
 Example:
