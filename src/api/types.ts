@@ -16,10 +16,26 @@ export type ApiCartItem = {
   id: string | number;
   item_id?: string;
   product_id?: string;
+  variant_id?: string;
   name?: string;
   title?: string;
   product_name?: string;
   product_title?: string;
+  currency_code?: string;
+  product_details?: {
+    id?: string;
+    title?: string;
+    description_html?: string;
+    primary_image?: string;
+    images?: string[];
+    [key: string]: unknown;
+  };
+  variant_details?: {
+    id?: string;
+    title?: string;
+    option_values?: string[];
+    [key: string]: unknown;
+  };
   price?: number;
   quantity: number;
   [key: string]: unknown;

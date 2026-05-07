@@ -66,7 +66,42 @@ function getJson<T>(res: Response): Promise<T> {
 
 /** Normalize API cart response to plugin-compatible shape */
 export function normalizeCartView(api: ApiCartViewResponse): NormalizedCart {
+  const stripHtml = (value: string): string =>
+    value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+
+  const pickDescription = (row: ApiCartItem): string | undefined => {
+    const html = row.product_details?.description_html;
+    if (typeof html !== "string") return undefined;
+    const out = stripHtml(html);
+    return out || undefined;
+  };
+
+  const pickImage = (row: ApiCartItem): string | undefined => {
+    const primary = row.product_details?.primary_image;
+    if (typeof primary === "string" && primary.trim()) return primary.trim();
+    const list = row.product_details?.images;
+    if (!Array.isArray(list)) return undefined;
+    const first = list.find((entry) => typeof entry === "string" && entry.trim());
+    return typeof first === "string" ? first.trim() : undefined;
+  };
+
+  const pickVariantOptions = (row: ApiCartItem): string[] | undefined => {
+    const options = row.variant_details?.option_values;
+    if (!Array.isArray(options)) return undefined;
+    const normalized = options
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    return normalized.length ? normalized : undefined;
+  };
+
   const pickName = (row: ApiCartItem): string | undefined => {
+    const fromProductDetailsTitle =
+      typeof row.product_details?.title === "string"
+        ? row.product_details.title.trim()
+        : "";
+    if (fromProductDetailsTitle) return fromProductDetailsTitle;
+
     const fromName = typeof row.name === "string" ? row.name.trim() : "";
     if (fromName) return fromName;
 
@@ -90,6 +125,13 @@ export function normalizeCartView(api: ApiCartViewResponse): NormalizedCart {
     ...row,
     id: row.item_id ?? row.id,
     name: pickName(row),
+    description: pickDescription(row),
+    image: pickImage(row),
+    variant_title:
+      typeof row.variant_details?.title === "string" && row.variant_details.title.trim()
+        ? row.variant_details.title.trim()
+        : undefined,
+    variant_options: pickVariantOptions(row),
     price: row.price,
     quantity: typeof row.quantity === "number" && row.quantity > 0 ? row.quantity : 1,
   }));
@@ -192,12 +234,14 @@ export async function mergeGuestCart(
   opts: CartApiOptions
 ): Promise<void> {
   const url = `${apiBaseUrl.replace(/\/$/, "")}/cart/merge-guest-cart`;
+  // Backend expects guest id in payload for merge requests: { tenant_id, store_id, guest_id }.
   const res = await fetch(url, {
     method: "POST",
     headers: buildHeaders(opts),
     body: JSON.stringify({
       ...(opts.tenantId ? { tenant_id: opts.tenantId } : {}),
       ...(opts.storeId ? { store_id: opts.storeId } : {}),
+      ...(opts.guestCartId ? { guest_id: opts.guestCartId } : {}),
     }),
   });
   if (!res.ok) await res.text().then((t) => { throw new Error(t || `HTTP ${res.status}`); });

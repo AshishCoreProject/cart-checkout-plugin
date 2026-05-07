@@ -323,19 +323,28 @@ export const CartProvider = ({
 
   // API mode only. Call after login: POST /cart/merge-guest-cart, clear stored guest id, refetch cart.
   const mergeGuestCart = useCallback(async () => {
-    if (!apiMode || !apiBaseUrl || !guestCartId) return;
+    if (!apiMode || !apiBaseUrl) return;
     const headers = getHeaders?.() ?? {};
     if (!headers["X-User-Id"]) return;
+    const key = getGuestCartStorageKey(tenantId, effectiveStoreId);
+    let resolvedGuestCartId = guestCartId;
+    if (!resolvedGuestCartId && typeof window !== "undefined") {
+      try {
+        resolvedGuestCartId = window.localStorage.getItem(key);
+      } catch {
+        // ignore
+      }
+    }
+    if (!resolvedGuestCartId) return;
     setIsSyncing(true);
     setLastError(null);
     try {
       await cartApi.mergeGuestCart(apiBaseUrl, {
         tenantId: tenantId || undefined,
         storeId: effectiveStoreId,
-        guestCartId,
+        guestCartId: resolvedGuestCartId,
         headers,
       });
-      const key = getGuestCartStorageKey(tenantId, effectiveStoreId);
       try {
         window.localStorage.removeItem(key);
       } catch {
